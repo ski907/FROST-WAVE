@@ -23,7 +23,7 @@ def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_wate
     # Initialize the derivatives for density to zero
     drho_dt = np.zeros_like(T_sat_front)
 
-    dT_sat_front_dt, frozen_mass_max = calculate_dT_sat_front_dt(T_firn, T_sat_front, R, rw, h_firn_water)
+    dT_sat_front_dt, frozen_mass_max = calculate_dT_sat_front_dt(T_firn, T_sat_front, R, rw, h_firn_water, rho_vector)
     # Ensure that T_sat_front does not go below 0 by zeroing its derivative if it's at 0
     dT_sat_front_dt[T_sat_front <= 0] = 0
 
@@ -32,16 +32,15 @@ def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_wate
     tolerance = 1e-3  # a small tolerance to check for equality to handle numerical approximations
 
     if np.any(np.abs(T_sat_front - freezing_temp) < tolerance):
-        Ck = 1  # freezing calibration constant
+        Ck = 1/(24*60*7)  # freezing calibration constant
         dmass_freezing_dt = Ck * frozen_mass_max
         drho_dt = dmass_freezing_dt
 
         # Update the densities only where the temperature is around 0 degree C
         drho_dt[np.abs(T_sat_front - freezing_temp) >= tolerance] = 0
-    max_rho = 1000
+    max_rho = 920
     drho_dt[rho_vector >= max_rho] = 0
 
-    rho_vector+=drho_dt
     Kh = calculate_Kh(rho_vector, rho_reference, Kh_index)
 
 
@@ -58,11 +57,12 @@ def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_wate
 
     #experiment, seems to work but is slow
     #basically explicit euler method
-    R_new = R + dR_dt
+    #R_new = R + dR_dt
     #R_new = R
 
     #Change in the well height
-    dhw_dt = calculate_dhw_dt(Q_in, Q_v, delta_theta, R, R_new, dz, rw)
+    #dhw_dt = calculate_dhw_dt(Q_in, Q_v, delta_theta, R, R_new, dz, rw)
+    dhw_dt = calculate_dhw_dt_alt(Q_in, Q_v, Q_h, rw)
 
     #and the change in Z
     dZ_dt = calculate_dZ_dt(Kv, delta_theta)
@@ -82,12 +82,13 @@ def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_wate
 
 
 @jit(nopython=True)
-def calculate_dT_sat_front_dt(T_firn, T_sat_front, R, rw, hA_firn_water):
+def calculate_dT_sat_front_dt(T_firn, T_sat_front, R, rw, hA_firn_water, rho_vector):
     # Parameters related to heat transfer
     #hA_firn_water = 100  # Heat transfer coefficient times specific area, W/m²K-m (this is a placeholder, adjust as needed)
-    c = 4184  # Specific heat capacity of water, J/kgK
-    rho = 1000  # Density of water, kg/m³
+    c_water = 4184  # Specific heat capacity of water, J/kgK
+    rho_water = 1000  # Density of water, kg/m³
     latent_heat_fusion = 334 * 1000 #J/kg
+    c_ice = 2108 # Specific heat capacity of ice, J/kgK
 
 
     # Compute the derivative of T_sat_front, dT_sat_front_dt
@@ -102,8 +103,8 @@ def calculate_dT_sat_front_dt(T_firn, T_sat_front, R, rw, hA_firn_water):
             #this is Newtons Law of Cooling where Q = h*A*(Ti-T)
             #h is the heat transfer coefficient (usually W/m^2K)
             #A is the specific Area, that is a function of the porous structure
-            dT_sat_front_dt[i] = hA_firn_water * (T_firn - T_sat_front[i]) / (c * rho)  # Only update if R > rw
-            frozen_mass_max[i] = - (T_firn * c * rho) / latent_heat_fusion  # See Illangasekare et al 1990
+            dT_sat_front_dt[i] = hA_firn_water * (T_firn - T_sat_front[i]) / (c_water * rho_water)  # Only update if R > rw
+            frozen_mass_max[i] = - (T_firn * c_ice * rho_vector[i]) / latent_heat_fusion  # See Illangasekare et al 1990
         # If R <= rw, both dT_sat_front_dt[i] and frozen_mass_max[i] remain zero
 
     return dT_sat_front_dt, frozen_mass_max
@@ -167,6 +168,12 @@ def calculate_dhw_dt(Q_in, Q_v, delta_theta, R, R_new, dz, rw):
 
     return dhw_dt
 
+@jit(nopython=True)
+def calculate_dhw_dt_alt(Q_in, Q_v, Q_h, rw):
+    dhw_dt = (Q_in - Q_v[0] - sum(Q_h)) / (np.pi * rw**2)
+
+    return dhw_dt
+
 # @jit(nopython=True)
 # def calculate_Kh(z_vector, rho_top, rho_bottom, Kh_index):
 #     well_length = z_vector[-1]  # assuming z_vector starts from 0
@@ -195,7 +202,7 @@ def calculate_Kh(rho_vector, rho_reference, Kh_index):
     # Calculate Kh based on the provided snow densities
     #based on Shumizu 1970
     Kh = Kh_index * np.exp(-7.8 * rho_vector / 1000) / np.exp(-7.8 * rho_reference / 1000)
-    Kh[rho_vector >= 1000] = 0
+    Kh[rho_vector >= 920] = 0
     #print(Kh)
     return Kh
 
