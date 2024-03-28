@@ -5,9 +5,8 @@
 import streamlit as st
 import numpy as np
 from FROSTWAVE import run_simulation
-from FROSTWAVE import plot_results_plotly
-from FROSTWAVE import plot_separate_results_plotly
-import matplotlib.pyplot as plt
+from visualization import plot_separate_results_plotly
+from stats import calculate_summary_stats
 
 def main():
     st.title("FROST-WAVE")
@@ -73,13 +72,20 @@ def main():
         solution, z_vector, Kh = run_simulation(flow_pattern, well_length,rw=rw, n_vertical_slices=n_vertical_slices,
                              Kh_index=Kh_index, T_water=T_water, T_firn=T_firn, hA_firn_water=hA_firn_water,
                              total_sim_time=total_sim_time)
-        # Add other variables as arguments
-        #fig = plot_results_plotly(solution,z_vector, Kh)
-        #st.plotly_chart(fig)
+
+        # Calculate summary statistics
+        time_intervals = solution.t
+        summary_stats_df = calculate_summary_stats(solution, z_vector, rw, time_intervals)
+
 
         figures = plot_separate_results_plotly(solution, z_vector, Kh, total_sim_time_years)
         for fig in figures:
             st.plotly_chart(fig)
+
+        # Display summary statistics
+        st.subheader("Summary Statistics")
+        st.dataframe(summary_stats_df, width=700, height=600)
+
 
 
 

@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
 #@jit(nopython=True)
 def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_water, delta_theta, psi, T_firn, flow_pattern):
 
@@ -43,22 +44,16 @@ def derivatives(t, y, z_vector, rw, dz, rho_reference, Kh_index, Kv, h_firn_wate
 
     Kh = calculate_Kh(rho_vector, rho_reference, Kh_index)
 
-
     #solve for dR/dt, dZ/dt and dhw/dt
     # first solve for Qh
     Q_h, R = calculate_Q_h(z_vector, R, hw, rw, Kh, dz, psi)
     #then Qv
     #Q_v = calculate_Q_v(z_vector, R, rw, Kv)
-    #some stability issues, so zeroing this for now
+    #assume ice lens at bottom so zeroing this for now
     Q_v = np.zeros_like(Q_h)
 
     #now calulate the change in radiuses
     dR_dt = calculate_dR_dt(Q_h, Q_v, R, dz, delta_theta)
-
-    #experiment, seems to work but is slow
-    #basically explicit euler method
-    #R_new = R + dR_dt
-    #R_new = R
 
     #Change in the well height
     #dhw_dt = calculate_dhw_dt(Q_in, Q_v, delta_theta, R, R_new, dz, rw)
@@ -232,168 +227,6 @@ def get_current_flow_rate(t, flow_pattern):
 
     return current_flow_rate
 
-def plot_results_plotly(solution, z_vector, Kh):
-
-    # Convert time from minutes to years for the first subplot
-    t_sol_years = solution.t / (60 * 24 * 365.25)
-    # Extract the results from the solution
-    t_sol = solution.t
-    hw_sol = solution.y[0, :]
-    Z_sol = solution.y[1, :]
-    R_sol = solution.y[2:2 + len(z_vector), :]
-    T_sat_front_sol = solution.y[2 + len(z_vector):2 + 2 * len(z_vector), :]
-    rho_sol = solution.y[2 + 2 * len(z_vector):, :]
-
-    # Create a figure with three subplots
-    fig = make_subplots(rows=4, cols=1, subplot_titles=('Outfall Head (m) and Well Elevation (m)', 'Radius of Outfall', 'Snow Density With Depth'))
-
-    # First subplot: hw_sol and Z_sol against time
-    fig.add_trace(go.Scatter(x=t_sol_years, y=hw_sol, mode='lines', name='hw_sol'), row=1, col=1)
-
-    # Second subplot: each row of R_sol against z_vector
-    num_traces = 6
-    indices_to_plot = np.linspace(0, R_sol.shape[1] - 1, num_traces, dtype=int)
-    for i in indices_to_plot:
-        fig.add_trace(go.Scatter(x=R_sol[:, i], y=z_vector, mode='lines', name=f'Time {t_sol_years[i]:.2f} years'), row=2, col=1)
-
-  #  # Third subplot: T_sat_front_sol against z_vector
-   # for i in range(T_sat_front_sol.shape[1]):
-    #    fig.add_trace(go.Scatter(x=T_sat_front_sol[:, i], y=z_vector, mode='lines', name=f'Time {t_sol[i]}'), row=3, col=1)
-
-    fig.add_trace(go.Scatter(x=Kh, y=z_vector, mode='lines', name='Kh'), row=3, col=1)
-
-    # Update xaxis and yaxis labels
-    fig.update_xaxes(title_text='Time (years)', row=1, col=1)
-    fig.update_yaxes(title_text='Elevation (m)', row=1, col=1)
-    fig.update_xaxes(title_text='Radius (m)', row=2, col=1)
-    fig.update_yaxes(title_text='Elevation (m)', row=2, col=1)
-    fig.update_xaxes(title_text='Kh (m/min)', row=3, col=1)
-    fig.update_yaxes(title_text='Elevation (m)', row=3, col=1)
-
-    # Update xaxis properties to ensure vertical grid lines are shown
-    fig.update_xaxes(showgrid=True, gridcolor='LightGrey', row=1, col=1)
-    fig.update_xaxes(showgrid=True, gridcolor='LightGrey', row=2, col=1)
-    fig.update_xaxes(showgrid=True, gridcolor='LightGrey', row=3, col=1)
-    fig.update_xaxes(showgrid=True, gridcolor='LightGrey', row=4, col=1)
-
-    # Update layout for a cleaner look
-    fig.update_layout(height=2000, width=1000, title_text='Simulation Results')
-    # Show the plot if running in a notebook; in Streamlit, return the figure object
-    # fig.show()
-    return fig
-
-def plot_separate_results_plotly(solution, z_vector, Kh, total_sim_time_years):
-    # Convert time from minutes to years for the subplot
-    t_sol_years = solution.t / (60 * 24 * 365.25)
-
-    # Extract the results from the solution
-    hw_sol = solution.y[0, :]
-    Z_sol = solution.y[1, :]
-    R_sol = solution.y[2:2 + len(z_vector), :]
-    T_sat_front_sol = solution.y[2 + len(z_vector):2 + 2 * len(z_vector), :]
-    rho_sol = solution.y[2 + 2 * len(z_vector):, :]
-
-    figures = []
-
-    # First subplot: hw_sol against time
-    fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=t_sol_years, y=hw_sol, mode='lines', name='hw_sol'))
-    fig1.update_layout(title='Outfall Head (m)', xaxis_title='Time (years)', yaxis_title='Elevation (m)', height=600, width=800)
-    fig1.update_xaxes(showgrid=True, gridcolor='LightGrey')
-    figures.append(fig1)
-
-    # Second subplot: each row of R_sol against z_vector
-    fig2 = go.Figure()
-    num_traces = total_sim_time_years +1
-    indices_to_plot = np.linspace(0, R_sol.shape[1] - 1, num_traces, dtype=int)
-    for i in indices_to_plot:
-        fig2.add_trace(go.Scatter(x=R_sol[:, i], y=z_vector, mode='lines', name=f'Time {t_sol_years[i]:.2f} years'))
-    fig2.update_layout(title='Radius of Outfall', xaxis_title='Radius (m)', yaxis_title='Elevation (m)', height=600, width=800)
-    fig2.update_xaxes(showgrid=True, gridcolor='LightGrey')
-    figures.append(fig2)
-
-    # Identify the last index for each year and create the figures
-    years = np.arange(1, total_sim_time_years + 1)
-    last_indices_each_year = [np.searchsorted(t_sol_years, year, side='right') - 1 for year in years]
-
-    for year, index in zip(years, last_indices_each_year):
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=R_sol[:, index], y=z_vector, mode='lines', name=f'End of Year {year}'))
-
-        # Use the set_figure_layout function to standardize the layout across all figures
-        set_figure_layout(fig, f'Radius of Outfall at the End of Year {year}', 'Radius (m)', 'Elevation (m)')
-        figures.append(fig)
-
-    # Third subplot: Kh against z_vector
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=Kh, y=z_vector, mode='lines', name='Kh'))
-    fig3.update_layout(title='Hydraulic Conductivity With Depth', xaxis_title='Kh (m/min)', yaxis_title='Elevation (m)', height=600, width=800)
-    fig3.update_xaxes(showgrid=True, gridcolor='LightGrey')
-    figures.append(fig3)
-
-    # Apply the layout settings to all the figures using the same function
-    set_figure_layout(fig1, 'Outfall Head (m)', 'Time (years)', 'Elevation (m)')
-    set_figure_layout(fig2, 'Radius of Outfall', 'Radius (m)', 'Elevation (m)')
-    set_figure_layout(fig3, 'Hydraulic Conductivity With Depth', 'Kh (m/min)', 'Elevation (m)')
-
-
-    # Return the list of figures
-    return figures
-
-def set_figure_layout(figure, title, xaxis_title, yaxis_title):
-    title_font_size = 24
-    axis_title_font_size = 20
-    axis_tick_font_size = 14
-
-    figure.update_layout(
-        title={
-            'text': title,
-            'y': 0.9,
-            'x': 0.5,
-            'xanchor': 'center',
-            'yanchor': 'top',
-            'font': dict(
-                size=title_font_size,
-                color='black',
-                family='Arial Bold, sans-serif',
-            ),
-        },
-        xaxis={
-            'title': xaxis_title,
-            'title_font': {
-                'size': axis_title_font_size,
-                'color': 'black',
-                'family': 'Arial Bold, sans-serif',
-            },
-            'tickfont': dict(
-                size=axis_tick_font_size,
-                color='black',
-                family='Arial Bold, sans-serif',
-            ),
-            'showgrid': True,
-            'gridcolor': 'LightGrey'
-        },
-        yaxis={
-            'title': yaxis_title,
-            'title_font': {
-                'size': axis_title_font_size,
-                'color': 'black',
-                'family': 'Arial Bold, sans-serif',
-            },
-            'tickfont': dict(
-                size=axis_tick_font_size,
-                color='black',
-                family='Arial Bold, sans-serif',
-            ),
-            'showgrid': True,
-            'gridcolor': 'LightGrey'
-        },
-        height=600,
-        width=800
-    )
-
-
-
 def run_simulation(flow_pattern, well_length=100, rw=0.1, n_vertical_slices=100,
                    Kh_index=60 * 10**-6, T_water=5, T_firn=-40,
                    hA_firn_water=100, total_sim_time=60*24*365/20):
@@ -463,84 +296,85 @@ def run_simulation(flow_pattern, well_length=100, rw=0.1, n_vertical_slices=100,
     #return plot_results_plotly(solution,z_vector)
 
 def main():
-    well_length = 100  # m
-    n_vertical_slices = 100
-    # adopting the convention of moreno z = 0 at bottom of well
-    z_vector = np.linspace(0, well_length, n_vertical_slices)
-    dz = well_length / (n_vertical_slices - 1)
-
-    # Specify the top and bottom snow densities
-    rho_top = 400  # kg/m^3
-    rho_bottom = 700  # kg/m^3
-
-    # Specify the index hydraulic conductivity
-    Kh_index = 60 * 10 ** -6  # m/s
-    Kh_index *= 60 #convert to m/min
-
-    # Calculate a linear gradient of snow densities along the well
-    initial_rho_vector = np.linspace(rho_bottom, rho_top, len(z_vector))
-
-    # Specify a reference density for which Kh_index is defined
-    rho_reference = rho_bottom  # or another value as per your requirements
-
-    # Calculate Kh for each z
-    Kh = calculate_Kh(initial_rho_vector, rho_reference, Kh_index)
-
-    #constant Kv
-    Kv = np.full_like(z_vector, 10**-7)
-
-    psi = np.full_like(z_vector, 0)
-    rw = 0.1
-
-    delta_theta = 0.3
-    #inflow rate
-    Q_in = 8.18/(24*60*60)*60 * 100  #m^3/minute
-    T_water = 5 #degrees C
-    T_firn = -40 #degrees C
-    hA_firn_water = 100 #J/min-m^2-K-m heat transfer coefficient times specific area
-
-    total_sim_time = 60*24*365  /20   #minutes
-
-    t_start = 0
-    t_end = total_sim_time
-
-    time_intervals = np.linspace(0, total_sim_time, 10)
-
-    # Initial conditions
-    initial_hw = 0
-    initial_Z = well_length
-    initial_R = np.full_like(z_vector, rw)
-    initial_T_sat_front = np.full_like(z_vector, T_water)
-
-    # Pack initial conditions into a single array
-    y0 = np.concatenate(([initial_hw, initial_Z], initial_R, initial_T_sat_front, initial_rho_vector))
-
-    # Example structure: [(duration_in_minutes, flow_rate), ...]
-    time_flow_pairs = [
-        (120 * 24 * 60, 8.18/(24*60)),  # 120 days of summer flow rate
-        (245 * 24 * 60, 8.18/(24*60)),  # 245 days of winter flow rate
-        # Add more periods as needed
-    ]
-
-    # Call solve_ivp
-    solution = solve_ivp(
-        fun=derivatives,
-        t_span=(t_start, t_end),
-        y0=y0,
-        args=(z_vector, rw, dz, rho_reference, Kh_index, Kv, hA_firn_water, delta_theta, psi, T_firn, time_flow_pairs),
-        method='RK23',
-        t_eval=time_intervals,
-        #atol=1e-3,
-        #rtol=1e-3,
-    )
-
-    if not solution.success:
-        print("Error: Solver did not successfully find a solution.")
-        print("Solver message:", solution.message)
-    else:
-        print("Sucessfull solve!")
-
-    plot_results(solution,z_vector)
+    none
+    # well_length = 100  # m
+    # n_vertical_slices = 100
+    # # adopting the convention of moreno z = 0 at bottom of well
+    # z_vector = np.linspace(0, well_length, n_vertical_slices)
+    # dz = well_length / (n_vertical_slices - 1)
+    #
+    # # Specify the top and bottom snow densities
+    # rho_top = 400  # kg/m^3
+    # rho_bottom = 700  # kg/m^3
+    #
+    # # Specify the index hydraulic conductivity
+    # Kh_index = 60 * 10 ** -6  # m/s
+    # Kh_index *= 60 #convert to m/min
+    #
+    # # Calculate a linear gradient of snow densities along the well
+    # initial_rho_vector = np.linspace(rho_bottom, rho_top, len(z_vector))
+    #
+    # # Specify a reference density for which Kh_index is defined
+    # rho_reference = rho_bottom  # or another value as per your requirements
+    #
+    # # Calculate Kh for each z
+    # Kh = calculate_Kh(initial_rho_vector, rho_reference, Kh_index)
+    #
+    # #constant Kv
+    # Kv = np.full_like(z_vector, 10**-7)
+    #
+    # psi = np.full_like(z_vector, 0)
+    # rw = 0.1
+    #
+    # delta_theta = 0.3
+    # #inflow rate
+    # Q_in = 8.18/(24*60*60)*60 * 100  #m^3/minute
+    # T_water = 5 #degrees C
+    # T_firn = -40 #degrees C
+    # hA_firn_water = 100 #J/min-m^2-K-m heat transfer coefficient times specific area
+    #
+    # total_sim_time = 60*24*365  /20   #minutes
+    #
+    # t_start = 0
+    # t_end = total_sim_time
+    #
+    # time_intervals = np.linspace(0, total_sim_time, 10)
+    #
+    # # Initial conditions
+    # initial_hw = 0
+    # initial_Z = well_length
+    # initial_R = np.full_like(z_vector, rw)
+    # initial_T_sat_front = np.full_like(z_vector, T_water)
+    #
+    # # Pack initial conditions into a single array
+    # y0 = np.concatenate(([initial_hw, initial_Z], initial_R, initial_T_sat_front, initial_rho_vector))
+    #
+    # # Example structure: [(duration_in_minutes, flow_rate), ...]
+    # time_flow_pairs = [
+    #     (120 * 24 * 60, 8.18/(24*60)),  # 120 days of summer flow rate
+    #     (245 * 24 * 60, 8.18/(24*60)),  # 245 days of winter flow rate
+    #     # Add more periods as needed
+    # ]
+    #
+    # # Call solve_ivp
+    # solution = solve_ivp(
+    #     fun=derivatives,
+    #     t_span=(t_start, t_end),
+    #     y0=y0,
+    #     args=(z_vector, rw, dz, rho_reference, Kh_index, Kv, hA_firn_water, delta_theta, psi, T_firn, time_flow_pairs),
+    #     method='RK23',
+    #     t_eval=time_intervals,
+    #     #atol=1e-3,
+    #     #rtol=1e-3,
+    # )
+    #
+    # if not solution.success:
+    #     print("Error: Solver did not successfully find a solution.")
+    #     print("Solver message:", solution.message)
+    # else:
+    #     print("Sucessfull solve!")
+    #
+    # plot_results(solution,z_vector)
 
 
 if __name__ == "__main__":
